@@ -1,3 +1,4 @@
+from openai import OpenAI
 """
 Stage 1: A fake ReAct agent.
 No LLM. The 'agent' is just a list of pre-scripted Thought/Action turns.
