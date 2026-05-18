@@ -192,7 +192,7 @@ OPENROUTER_API_KEY=sk-or-v1-...
 ---
 
 ## Status
-
+#
 ✅ Module 1: Foundations
 ✅ Module 2: Building a ReAct Agent (Stages 1–3)
 ⏳ Module 2: Additional theory (native tool calling, ReAct variants, frameworks, production failure modes)
