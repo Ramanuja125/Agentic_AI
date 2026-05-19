@@ -1,5 +1,6 @@
-## This is an entire Agentic AI projects, along with clear explanation of what I have built and learnt
+## This is an entire repo of various Agentic AI projects, along with clear explanation of what I have built and learnt
 ### Each Module is built for specific use case and has examples as mentioned.
+### This contains simplest agents with access to only one tool (Calculator) upto complex multi tool agent access
 
 
 # Agentic AI — Learning Journey
@@ -354,16 +355,81 @@ If you can't answer #4 confidently, you don't have a safe tool — you have a ho
 
 ---
 
+## Module 3.5 — Structured Outputs
+
+Added structured JSON output to the agent's final answer using OpenAI-compatible `response_format` with JSON Schema enforcement.
+
+### Why structured outputs
+
+- Real agents almost never produce final outputs for human consumption only — they feed dashboards, databases, downstream services.
+- Free-form prose requires parsing; parsing is unreliable; agents word things inconsistently.
+- Structured outputs guarantee field names, types, and constraints (enums, required fields).
+
+### The three approaches
+
+1. **Ask in the prompt.** ~95% reliable. Models sometimes wrap in markdown, add preamble, get fields wrong.
+2. **JSON mode.** Format guaranteed; content (fields, types) still free-form.
+3. **Structured outputs with schema.** Both format and content guaranteed. The production answer.
+
+We used #3, passing a JSON Schema via `response_format`.
+
+### The schema we used
+
+```json
+{
+  "answer": "string",
+  "key_facts": ["string"],
+  "sources_used": ["calculator" | "lookup" | "wikipedia_search" | "wikipedia_get_article" | "python_exec" | "prior_knowledge"],
+  "confidence": "high" | "medium" | "low",
+  "limitations": "string"
+}
+```
+
+Enums on `sources_used` and `confidence` are critical — without them, models invent vocabulary ("pretty sure", "the calculator tool").
+
+### Surprising things observed
+
+- **Structured outputs guarantee format, not meaning.** Agents fill in fields per the schema, but their *interpretation* of what each field is *for* often differs from the designer's. The `limitations` field was treated as "external/situational caveats" rather than "internal/epistemic uncertainty" most of the time.
+- **Agents propagate uncertainty when it's articulated; they don't originate it.** Berlin's stale 2019 figure didn't get flagged. Burj Khalifa's two different heights didn't get flagged. But Atlantis being mythical and "sound through vacuum" being impossible *were* flagged — because both were structurally obvious in the input.
+- **`confidence` is almost always "high".** This is real model miscalibration. To get useful confidence signals you need either (a) explicit prompting that defines what each level *means*, (b) a verifier LLM that re-scores confidence, or (c) evals that measure calibration across many runs.
+- **Prior knowledge gets used liberally.** Models will skip the lookup tool on facts they're confident about (capital of Mongolia), even with prior_knowledge being structurally undesirable. To force verification, the system prompt has to explicitly say "you MUST verify all factual claims via tools."
+
+---
+
+## Module 3.6 — Capstone
+
+A single multi-step task exercising the whole stack: lookup, search, fetch, computation, conceptual reasoning, and structured output.
+
+**Task:** Compare light vs sound travel time from Moon to Earth, compute the ratio, and explain why "lightning before thunder" matters.
+
+### Behaviors observed
+
+- **Aggressive parallel lookups.** Three independent lookups fired simultaneously in step 1. When all failed (close but not exact matches), the agent re-queried using the suggestion engine's hints, also in parallel. Total cost: two API turns, six tool calls. This is what well-tooled native-tool-calling agents look like in production.
+- **Unit-aware variable naming.** The agent named variables `distance_km` and `distance_m` in its Python code, and converted explicitly between them. This is real-engineer-quality discipline, picked up from training on code.
+- **Limitations field filled correctly.** First time we saw this. Worked because the question explicitly contained an assumption ("which it can't, but assume it can"). The agent propagated the caveat. Same agent doesn't originate caveats on its own.
+- **Loop detection fired incorrectly.** SYSTEM NOTE warned about 4 lookups in a row, but those lookups were successfully recovering from misnamed queries — actually progressing, not stuck. Agent correctly ignored the false alarm and continued. Lesson: loop detection should distinguish "many calls" from "many *failed* calls".
+
+### The architecture's ceiling (so far)
+
+What this 100-line agent + 5-tool registry CAN do reliably:
+- Multi-step research with 3-8 steps
+- Numerical computation with unit awareness
+- Conceptual reasoning + factual lookup combined
+- Producing structured output for downstream consumption
+
+What it CANNOT do (deferred to later modules):
+- Learn between runs (Module 4: memory/reflection)
+- Plan 20+ step tasks coherently (Module 4: planning)
+- Delegate to specialists (Module 5: multi-agent)
+- Production-grade observability and orchestration (Module 6: frameworks)
+
+---
+
 ## Status
 
 - ✅ Module 1: Foundations
-- ✅ Module 2: Building a ReAct Agent (Stages 1–3)
-- ✅ Module 2: Extended theory
-- ✅ Module 3.1: Native tool calling refactor
-- ✅ Module 3.2: Tool design principles
-- ✅ Module 3.3: Real-world tools (Wikipedia, Python exec, loop detection)
-- ✅  Module 3.4: Tool safety and sandboxing
-- ⏳ Module 3.5: Structured outputs
+- ✅ Module 2: Building a ReAct Agent (Stages 1–3, extended theory)
+- ✅ Module 3: Expanding the Action Space (3.1–3.6 complete)
 - ⏳ Module 4: Memory, planning, reflection
 - ⏳ Module 5: Multi-agent systems
 - ⏳ Module 6: Frameworks (LangGraph, CrewAI)
