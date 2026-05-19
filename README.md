@@ -425,11 +425,141 @@ What it CANNOT do (deferred to later modules):
 
 ---
 
+---
+
+## Module 4.1 — What "Memory" Actually Means in Agentic AI
+
+The word "memory" gets used for at least four different things in the field. They have different mechanisms, costs, and purposes.
+
+### The four types of memory
+
+| Type | What it stores | Where it lives | Lifetime |
+|------|---------------|---------------|----------|
+| **Working** | Current conversation context | `messages` list, in memory | Dies when run ends |
+| **Episodic** | Past runs and their outcomes | Database / file | Persistent across runs |
+| **Semantic** | Structured general knowledge | KB / vector DB / docs | Persistent, usually read-only |
+| **Procedural** | How-to skills and patterns | System prompt / fine-tuning | Persistent, hard to update dynamically |
+
+### What each type solves
+
+- **Working memory** — lets the agent reason over what's happened in the current task.
+- **Episodic memory** — lets the agent learn over time without retraining. ("Have I solved this before? What worked?")
+- **Semantic memory** — gives the agent access to specific knowledge the LLM doesn't have or shouldn't memorize (private data, current data, niche expertise). RAG patterns live here.
+- **Procedural memory** — encodes how the agent should behave. The system prompt is the simplest form; production systems sometimes dynamically update this.
+
+### What we already have vs. what's missing
+
+- ✅ Working memory (the `messages` list)
+- ⚠️ Partial semantic memory (the `KNOWLEDGE_BASE` in `lookup`, but tiny)
+- ❌ Episodic memory (no persistence across runs — agent re-derives everything)
+- ✅ Static procedural memory (the system prompt)
+
+### Why the distinction matters
+
+- "Give the agent a memory" is ambiguous. RAG, Reflexion, context summarization, and skill libraries are all "memory" but solve different problems.
+- Each type has different cost/complexity tradeoffs. Working memory is cheap and fragile; episodic memory is moderately expensive but transformative; semantic memory needs real retrieval infrastructure.
+
+---
+
+## Module 4.2 — Working Memory and Context Compression
+
+The problem: the `messages` list grows on every turn. For long-running agents this becomes a context-window issue, a cost issue, and a "lost in the middle" reasoning issue.
+
+### The solution: periodically summarize old turns
+
+Strategy: keep the system prompt and original user goal verbatim. Keep the last N "turn groups" verbatim. Replace everything in between with a single LLM-generated summary.
+
+### The three structural rules
+
+1. **Always keep the system prompt** (agent identity).
+2. **Always keep the original user goal** (task being solved).
+3. **Always cut on a turn boundary** — never split an assistant's tool_calls from their results. The API enforces tool_call_id linking, so breaking turn groups produces 400 errors.
+
+A "turn group" = one assistant message + all tool result messages before the next assistant message.
+
+### Implementation
+
+- Token-based trigger: if conversation exceeds threshold (e.g., 8000 tokens), compress.
+- Cutoff = index of the Nth-from-last assistant message.
+- Summarize indices [2 : cutoff], keep [cutoff : end].
+- Summary inserted as a `"user"` role message wrapped in `[SUMMARY OF EARLIER STEPS]` markers.
+- Compression uses an LLM call itself — typically the same model, but cheaper models work too.
+
+### What good summaries preserve
+
+- Original user goal anchor
+- Specific facts (with exact numbers/values)
+- What tools were tried and what worked/didn't
+- Decisions and constraints discovered
+
+### What summaries drop
+
+- Verbose intermediate reasoning
+- Failed exploration paths in full detail
+- Exact tool_call syntax and IDs
+
+### Surprising things observed
+
+- **Compression makes long agents possible but doesn't make them better.** It solves cost and context-overflow problems, not reasoning problems.
+- **Compression is lossy by definition.** The summary captures less than the original — the skill is summarizing the *right* things.
+- **Compression can cause redundant work.** When the agent's actual findings (e.g., article text it just fetched) get summarized away, the agent may re-fetch them because the summary doesn't fully replace the original content in its mental model.
+- **`temperature=0.0` is not actually deterministic.** Same task, same inputs, same model occasionally produces different paths — floating-point non-determinism on GPUs, batching effects, backend variance. Production agents must assume non-determinism even at temperature 0.
+- **The Gemini-via-OpenRouter combo doesn't support `tools` + `response_format` (JSON schema) simultaneously.** Switched to `openai/gpt-4o-mini`, which does. Worth knowing: feature compatibility varies by provider, even through unified APIs.
+- **Aggressive compression settings cause jarring context drops.** With `keep_last_n_turns=2`, compression replaces 5-8 turn groups at once, dropping context by 75% in one step. Production settings would compress less aggressively to avoid disrupting the agent's flow.
+
+### The deep architectural lesson
+
+When facts live only inside the conversation, compression blurs them. A better architecture has facts living *outside* the conversation — in a scratchpad, structured intermediate output, or persistent memory. Compression then doesn't lose them.
+
+This motivates Module 4.3.
+
+---
+
+## Cheatsheets (additions)
+
+### Context Compression Cheatsheet
+
+**Trigger:** token threshold (e.g., 8000 tokens). Adaptive — fires when needed, not at fixed intervals.
+
+**Cutoff:** always at an assistant-message index. Slicing in the middle of a turn group breaks tool_call_id linking → 400 error from API.
+
+**Slice pattern:**
+```
+compressed = (
+    messages[:2]                          # system + original user goal
+    + [summary_message]                   # one LLM-generated summary
+    + messages[cutoff_index:]             # last N turn groups intact
+)
+```
+
+**Summary prompt structure:**
+- Include original user goal (anchors relevance)
+- Format transcript human-readably
+- Explicit instructions on what to preserve (exact numbers) and drop (verbose reasoning)
+- Cap with `max_tokens` (e.g., 400) to keep summary terse
+
+**Watch for:** the agent re-doing work that got summarized away. If you see redundant tool calls after compression, your summary is dropping things the agent needs.
+
+---
+
+## Code Artifacts (additions)
+
+| File | Purpose |
+|------|---------|
+| `stage4_2_compressed.py` | Same agent as 3.5 + working-memory compression triggered by token threshold |
+
+---
+
 ## Status
 
 - ✅ Module 1: Foundations
 - ✅ Module 2: Building a ReAct Agent (Stages 1–3, extended theory)
 - ✅ Module 3: Expanding the Action Space (3.1–3.6 complete)
-- ⏳ Module 4: Memory, planning, reflection
+- ✅ Module 4.1: What "memory" means (four types)
+- ✅ Module 4.2: Working memory and context compression
+- ⏳ Module 4.3: Episodic memory (cross-run learning)
+- ⏳ Module 4.4: Planning patterns
+- ⏳ Module 4.5: Reflection patterns
+- ⏳ Module 4.6: Module 4 capstone
 - ⏳ Module 5: Multi-agent systems
 - ⏳ Module 6: Frameworks (LangGraph, CrewAI)
