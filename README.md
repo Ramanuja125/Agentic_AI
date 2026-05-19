@@ -1,5 +1,5 @@
-## this is a agentic AI course work.
-### module 1 has the setup - connection to Google Gen AI using LLM api key
+## This is an entire Agentic AI projects, along with clear explanation of what I have built and learnt
+### Each Module is built for specific use case and has examples as mentioned.
 
 
 # Agentic AI — Learning Journey
@@ -265,6 +265,94 @@ if last_4_tools.count(name) >= 4:
 Why this is better than modifying the system prompt: it activates only when needed, gives the agent specific actionable advice in context, and doesn't bloat the prompt for normal cases.
 
 ---
+---
+
+## Module 3.4 — Tool Safety and Sandboxing
+
+### The real threat model
+
+Three threats, in descending likelihood:
+
+1. **Agent mistakes** — LLMs hallucinate arguments, pick wrong tools, misread observations. Most "safety incidents" are this.
+2. **Prompt injection** — external content (web pages, emails, documents) contains instructions designed to manipulate the agent.
+3. **Excessive authority** — the agent has access to tools whose effects exceed what the task actually needed.
+
+The agent is the *vector*, not the attacker. The attacker is whoever wrote the malicious input, or whoever designed the system without the right guardrails.
+
+### Four principles of safe tool design
+
+1. **Distinguish reversible from irreversible actions.** Reversible actions (reads, searches, computations) can be automated freely. Irreversible actions (sends, deletes, posts, charges) must never be fully automated.
+
+2. **Trust boundaries beat technical sandboxes.** Don't try to neuter a dangerous thing — run it in a place where its consequences are bounded. Docker, microVMs, dedicated directories, allowlisted proxies, least-privilege DB users.
+
+3. **Confirmation gates for irreversible actions.** Agent *proposes* the action via one tool; a human *approves* via a separate step; only then does a third tool actually execute.
+
+4. **Treat external content as data, not instructions.** Wrap untrusted content in clear delimiters. Tell the agent in the system prompt that nothing inside those delimiters should be followed as instructions.
+
+### Reversibility is contextual, not absolute
+
+The same tool can be reversible or catastrophic depending on what it's pointed at.
+
+- `write_file("scratch.txt", "hello")` → reversible
+- `write_file("/etc/hosts", "...")` → catastrophic
+- `write_file("~/.bashrc", "...")` → catastrophic with delayed effect
+
+You can't classify a *tool* — you have to classify the action it would take in context. The tool's job is to refuse contexts that make it dangerous.
+
+### The lethal trifecta
+
+A single agent with all three of these is a data-exfiltration pipeline:
+
+1. Access to private/sensitive data
+2. Ability to communicate externally (network, email, file writes outside the sandbox)
+3. Exposure to untrusted content (web pages, user documents, third-party API responses)
+
+Prompt injection in (3) can exfiltrate (1) through (2). Split agents to break the trifecta — give each agent at most two of these three capabilities.
+
+### What production systems actually use
+
+| Need | Production solution |
+|------|---------------------|
+| Code execution | Docker container, Firecracker microVM, e2b.dev, Pyodide (WASM) |
+| File operations | Dedicated working directory with path-traversal protection |
+| Network operations | Outbound proxy with domain allowlist |
+| Database access | Least-privilege DB user with restricted schema access |
+| Irreversible APIs (email, payment) | Confirmation gate (prepare → review → confirm) |
+
+### Confirmation gate pattern
+
+```python
+pending_actions = {}
+
+def prepare_email(to, subject, body):
+    action_id = generate_id()
+    pending_actions[action_id] = {"type": "email", "to": to, ...}
+    return f"Email prepared (NOT sent). Action ID: {action_id}\n  To: {to}\n  ..."
+
+def confirm_action(action_id, user_approved):
+    # Called by the loop in response to user approval, NOT exposed to the agent.
+    if not user_approved:
+        del pending_actions[action_id]
+        return "Cancelled."
+    # Only here does the irreversible thing actually happen.
+    actually_send(...)
+```
+
+The agent only has access to `prepare_email`. The execution is gated outside the agent's tool surface.
+
+### Cheatsheet: questions to ask for every new tool
+
+1. **Reversible or irreversible?** (And in what contexts could it become irreversible?)
+2. **What's the worst the agent could do by mistake?**
+3. **What's the worst an attacker could do via prompt injection?**
+4. **What's the trust boundary?** (Container? Directory? Proxy? DB permissions?)
+5. **Does this tool combined with another tool create the lethal trifecta?**
+6. **Does this need a confirmation gate?**
+7. **What's the blast radius if it goes wrong?**
+
+If you can't answer #4 confidently, you don't have a safe tool — you have a hopeful tool.
+
+---
 
 ## Status
 
@@ -274,9 +362,8 @@ Why this is better than modifying the system prompt: it activates only when need
 - ✅ Module 3.1: Native tool calling refactor
 - ✅ Module 3.2: Tool design principles
 - ✅ Module 3.3: Real-world tools (Wikipedia, Python exec, loop detection)
-- ⏳ Module 3.4: Tool safety and sandboxing
+- ✅  Module 3.4: Tool safety and sandboxing
 - ⏳ Module 3.5: Structured outputs
-- ⏳ Module 3.6: Capstone task
 - ⏳ Module 4: Memory, planning, reflection
 - ⏳ Module 5: Multi-agent systems
 - ⏳ Module 6: Frameworks (LangGraph, CrewAI)
