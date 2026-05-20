@@ -22,10 +22,39 @@ A self-paced course on Agentic AI, built from scratch in plain Python (no framew
 
 ## Table of Contents
 
+### How to use this README
+- [How to read this README](#how-to-read-this-readme)
+
+### The Course
 - [Module 1: Foundations](#module-1-foundations)
 - [Module 2: Building a ReAct Agent](#module-2-building-a-react-agent)
-- [Code Artifacts](#code-artifacts)
+- [Module 3.3: Real-World Tools](#module-33--real-world-tools)
+- [Module 3.4: Tool Safety and Sandboxing](#module-34--tool-safety-and-sandboxing)
+- [Module 3.5: Structured Outputs](#module-35--structured-outputs)
+- [Module 3.6: Capstone](#module-36--capstone)
+- [Module 4.1: What "Memory" Actually Means](#module-41--what-memory-actually-means-in-agentic-ai)
+- [Module 4.2: Working Memory and Context Compression](#module-42--working-memory-and-context-compression)
+- [Module 4.3: Episodic Memory](#module-43--episodic-memory)
+- [Module 4.4–4.6: Planning, Reflection, Capstone](#module-44--46--planning-reflection-capstone-theory-only)
+- [Module 5: Multi-Agent Systems](#module-5--multi-agent-systems)
+- [Module 6: Frameworks](#module-6--frameworks)
+
+### Reference Material
+- [Cheatsheets](#cheatsheets-additions)
+  - Real-World Tool Design
+  - Loop Detection
+  - Context Compression
+  - Writing Lessons That Work
+- [Conceptual Reference: Module 2 Extended Theory](#conceptual-reference-module-2-extended-theory)
+- [Conceptual Reference: ReAct Family of Patterns](#conceptual-reference-react-family-of-patterns)
+- [Conceptual Reference: Production Failure Modes](#conceptual-reference-production-failure-modes)
+- [Conceptual Reference: LLM API Statelessness](#conceptual-reference-llm-api-statelessness)
+
+### Index
+- [Complete Code Artifacts Index](#complete-code-artifacts-index)
 - [Key Lessons Learned](#key-lessons-learned)
+- [Final Reflection](#final-reflection)
+- [Status](#status)
 
 ---
 
