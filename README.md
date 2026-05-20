@@ -550,16 +550,193 @@ compressed = (
 
 ---
 
+## Module 4.3 — Episodic Memory
+
+Built a memory system that stores lessons learned from past runs and retrieves relevant ones for new tasks.
+
+### Architecture
+
+- **Storage:** JSON file (`agent_memory.json`) — each entry has `lesson`, `embedding`, `task`.
+- **Embedding model:** `openai/text-embedding-3-small` (1536 dimensions, ~$0.02/M tokens).
+- **Similarity:** cosine similarity via NumPy.
+- **Retrieval:** embed the user goal, score against all stored lessons, return top-K above threshold.
+- **Threshold:** 0.35 default; tuned empirically based on observed similarity scores.
+
+### The agent loop with memory
+
+```
+BEFORE the loop:
+  - Embed user goal
+  - Retrieve top-K relevant lessons (similarity >= threshold)
+  - Inject into system prompt with "MIGHT be relevant — use judgment" framing
+
+DURING the loop:
+  - Track tool calls and results for later lesson extraction
+
+AFTER the loop:
+  - Pass run summary to an LLM "lesson extractor"
+  - Extractor returns either a specific actionable lesson OR `NO_LESSON`
+  - If a lesson is returned, embed and store it
+```
+
+### Two persistent problems and how we addressed them
+
+**Problem 1: Lesson extractors invent platitudes.**
+Default prompts produce lessons like "ensure outputs are clear" — generic, unactionable, useless. Memory fills with noise.
+
+*Solution:* explicit positive examples (a real specific lesson), explicit negative examples (the platitudes to avoid), and a strong default toward `NO_LESSON`. After this fix, multiple successful runs correctly produced no lessons.
+
+**Problem 2: Relevant-looking lessons may not embed close enough to retrieve.**
+A lesson about "researching historical figures" had only 0.273 similarity to a goal about a specific historical figure. Below threshold → not retrieved.
+
+*Solution:* phrase lessons in vocabulary similar to expected future queries. Reworded the same lesson with overlapping terms ("Roman emperor", "Wikipedia") and similarity jumped to 0.539.
+
+### Surprising things observed
+
+- **Memory works mechanically but has modest impact per single run.** Embedding, storage, retrieval, threshold filtering all worked correctly. But measuring the effect of one lesson on one run is nearly impossible — non-determinism dominates.
+- **The "use judgment" framing in lesson injection is doing real work.** Seeded a deliberately misleading lesson (search for nonexistent "Disambiguation Index"). It was retrieved. The agent ignored it completely and used its own judgment.
+- **This implies real memory systems give statistical, not absolute, wins.** A bad lesson won't break behavior. A good lesson won't dictate behavior. Both are weighted inputs, not commands. Production gains are 5-15% on aggregate metrics, not dramatic per-run transformations.
+- **Lesson phrasing has to match expected future task phrasing for retrieval to work.** This is the central craft of writing lessons for production memory systems: write them in the vocabulary the agent will use when describing related future tasks.
+- **Successful, uneventful runs produce no learnable lessons.** Most of our well-architected tasks just succeed cleanly. Memory systems benefit most when paired with tasks that *do* fail in distinctive ways — which is most production work, but not our toy capstone tasks.
+
+### The bootstrap problem
+
+Cold-start memory is useless. Production systems often seed lessons manually based on engineer knowledge before deploying. The seed gets *added to* by organic learning over time. Without a bootstrap, memory takes hundreds of runs to become valuable.
+
+We demonstrated this directly: a manually-seeded lesson about Wikipedia research patterns was correctly retrieved on related future tasks.
+
+### Memory injection design principles
+
+| Choice | Effect |
+|--------|--------|
+| Framing as "MIGHT be relevant — use judgment" | Agent treats lessons as suggestions; ignores bad ones |
+| Framing as "MANDATORY rules from past runs" | Agent follows rigidly; one bad lesson breaks everything |
+| Lessons phrased like future queries | Higher retrieval similarity, more often surfaced |
+| Lessons phrased abstractly | Lower retrieval similarity; rarely surfaced |
+| Include exact tool names and error patterns | Specific lessons retrieve sharply when conditions recur |
+| Include generic advice | Diffuse retrieval, low signal |
+
+### Cheatsheet: writing lessons that work
+
+1. **Be specific.** Mention exact tool names, error patterns, numeric thresholds. "wikipedia_get_article returns HTTP 429 after 3+ rapid calls" beats "be careful with Wikipedia."
+2. **Use task-vocabulary.** Write lessons in the words the agent would use to describe a related future task. "When researching a Roman emperor..." beats "for historical figure research..."
+3. **Default to NO_LESSON.** Most runs aren't notable. Save lessons only when something *specific* happened.
+4. **Lessons are weighted inputs, not commands.** Frame injection with "use judgment" to keep the agent's own reasoning in the loop.
+5. **Bootstrap manually.** Don't wait for organic learning. Seed lessons from your own observations of past failures.
+
+---
+
+## Code Artifacts (additions)
+
+| File | Purpose |
+|------|---------|
+| `memory.py` | Embedding, storage, retrieval, and lesson extraction |
+| `stage4_3_memory.py` | Agent loop with memory retrieval before run and lesson saving after |
+| `agent_memory.json` | Persistent storage of lessons + their embedding vectors |
+
+---
+
+## Module 4.4 – 4.6 — Planning, Reflection, Capstone (theory only)
+
+Skipped implementation in favor of conceptual coverage. Key takeaways:
+
+### Planning patterns
+
+**Problem ReAct doesn't solve:** goal drift on long tasks — the agent's attention gets dominated by recent context and loses sight of the original goal.
+
+**Plan-and-Execute:**
+1. Planner LLM produces an explicit numbered plan
+2. Executor runs each step (often as a small ReAct sub-agent)
+3. Replan when reality contradicts the plan
+
+**When it helps:** structured, predictable tasks (research, comparisons, multi-source synthesis).
+
+**When it hurts:** highly exploratory tasks where the right next step depends on what you find.
+
+**Why it matters:** plans are valuable because they're explicit. You (or another system) can inspect, critique, and modify them. ReAct's implicit plan lives in the LLM's head only.
+
+### Reflection patterns
+
+**Problem:** the agent produces confidently wrong answers with no native way to catch itself. Calibration failure.
+
+**Self-critique:** after the agent produces an answer, a separate LLM call critiques it. If issues found, agent revises. Repeat until satisfied (capped).
+
+**Why it sometimes works:** LLMs are often better at recognizing problems in existing text than at avoiding them while generating.
+
+**Why it sometimes fails:** if the critic shares the generator's blind spots, neither catches the issue.
+
+**Reflexion (named pattern):** reflection + episodic memory. After each run, generate a written reflection ("what went well/badly"), store as a lesson, retrieve for future related runs. This is what your `extract_lesson_from_run` is already doing.
+
+**Verifier patterns:** when possible, use deterministic verification (run tests, re-derive math, search for confirmation) instead of open-ended critique. Tighter signal, drives retry loops better. This is why coding agents outperform research agents — they have verifiers built into their environment.
+
+**Best place to deploy reflection:** at decision boundaries, especially before delivering output to the user. One extra LLM call, catches a meaningful fraction of bad outputs.
+
+### How they compose
+
+The three patterns are complementary layers of robustness:
+- **Planning** = structural safety (won't wander)
+- **Memory** = experiential safety (won't repeat known mistakes)
+- **Reflection** = output safety (won't ship confidently wrong)
+
+Each costs additional LLM calls. Each addresses a different failure mode.
+
+### Production naming
+
+Same patterns appear in literature under different names:
+- "Agentic workflows" = planning
+- "Reflexion" = memory + reflection
+- "Self-refine" = iterative reflection
+- "Constitutional AI" = reflection with a written rubric
+
+The names matter less than the structure.
+
+### Reflection: built and tested
+
+Built a reflection layer on top of `stage3_5_structured.py` as `stage4_5_reflection.py`. After the agent produces a proposed structured answer, a separate LLM critic reviews it. Critic returns APPROVED or REVISE with specific critique. If REVISE, agent gets a capped (5-step) revision loop to address the critique.
+
+#### Test 1: Burj Khalifa height vs. Mount Everest
+
+- **Original answer:** "Burj Khalifa is approximately 0.0938 times the height of Mount Everest" (confusing phrasing — 0.0938 doesn't intuitively read as "fraction of height")
+- **Critic caught:** the semantic mismatch between calculation direction and the question's phrasing
+- **Revised answer:** "Mount Everest is approximately 10.66 times taller than the Burj Khalifa" + non-empty `limitations` field acknowledging the interpretive choice
+- **Cost:** +2 LLM calls (1 critic + 1 revision step)
+- **Verdict:** Clean win. Reflection caught a real issue the generator missed.
+
+#### Test 2: Berlin population density
+
+- **Original answer:** "Berlin's population is 4 million... density ~4485 per sq km"
+- **Critic caught:** the 4 million figure is rounded; precise number is ~3.77 million
+- **Revision loop:** Agent re-fetched articles, found Demographics of Berlin's precise 3,769,495 figure, computed correct density of 4227.3
+- **Outcome:** Revision loop hit the 5-step cap *before* producing the final answer. System fell back to original (wrong) answer.
+- **Verdict:** Mixed. Critic was right, revision work was correct, but budget exhausted just shy of completion.
+
+### Lessons learned about reflection
+
+1. **It does catch real mistakes.** The Burj Khalifa phrasing error would have shipped without reflection.
+2. **It also catches debatable issues.** The 4-million Berlin figure was defensibly rough; the critic still flagged it.
+3. **Cost roughly triples.** ~4-step task became ~11 calls with reflection + revision.
+4. **Iteration caps interact badly with revision.** The agent might need real verification work; a 5-step cap can run out.
+5. **Critic calibration is a craft.** Too-soft critic approves bad answers; too-strict critic causes expensive revisions for marginal improvements.
+6. **Reflection works statistically, not per-run.** Single runs can win or lose; aggregate improvement is what matters.
+
+### Where reflection helps most
+
+- Tasks where output quality matters more than latency or cost
+- Final user-facing outputs (reports, customer responses)
+- Outputs that will feed downstream systems where errors propagate
+
+### Where reflection helps least
+
+- Exploratory work where partial answers are fine
+- High-volume internal tasks where 3x cost is prohibitive
+- Tasks where the critic's likely blind spots match the generator's (e.g., both miss the same factual error)
+---
+
 ## Status
 
 - ✅ Module 1: Foundations
-- ✅ Module 2: Building a ReAct Agent (Stages 1–3, extended theory)
-- ✅ Module 3: Expanding the Action Space (3.1–3.6 complete)
-- ✅ Module 4.1: What "memory" means (four types)
-- ✅ Module 4.2: Working memory and context compression
-- ⏳ Module 4.3: Episodic memory (cross-run learning)
-- ⏳ Module 4.4: Planning patterns
-- ⏳ Module 4.5: Reflection patterns
-- ⏳ Module 4.6: Module 4 capstone
+- ✅ Module 2: Building a ReAct Agent
+- ✅ Module 3: Expanding the Action Space
+- ✅ Module 4: Memory, planning, reflection (4.4–4.6 covered as theory)
 - ⏳ Module 5: Multi-agent systems
-- ⏳ Module 6: Frameworks (LangGraph, CrewAI)
+- ⏳ Module 6: Frameworks
