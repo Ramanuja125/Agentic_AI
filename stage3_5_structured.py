@@ -442,5 +442,6 @@ def run_agent(user_goal: str):
 
 if __name__ == "__main__":
     run_agent(
-        "What's the population of Atlantis?" 
+        "Write a short biographical summary of Marie Curie covering her early life, "
+    "scientific work, and historical significance."
     )

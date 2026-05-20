@@ -732,11 +732,148 @@ Built a reflection layer on top of `stage3_5_structured.py` as `stage4_5_reflect
 - Tasks where the critic's likely blind spots match the generator's (e.g., both miss the same factual error)
 ---
 
+---
+
+## Module 5 — Multi-Agent Systems
+
+Built two multi-agent patterns: a sequential pipeline and a manager/worker system. Compared both to single-agent baselines.
+
+### Why multi-agent at all
+
+The motivation isn't capability — a single agent with the right tools can do almost anything multi-agent can. The motivation is:
+
+- **Quality** — specialized prompts focused on one task outperform monolithic prompts trying to cover everything.
+- **Clarity** — failures localize to specific agents instead of being hidden in a single long trace.
+- **Scale** — different agents can use different models, infrastructure, rate limits, or be maintained by different teams.
+
+### The two foundational patterns
+
+**Pipeline (sequential):** One agent feeds another in a fixed order.
+```
+User goal → [Researcher] → findings → [Writer] → final output
+```
+Use when the task has clear, predictable phases.
+
+**Manager/Worker (orchestrated):** A central manager delegates to specialized workers based on what the task needs.
+```
+                [Manager]
+               ↙    ↓    ↘
+        [Worker A] [Worker B] [Worker C]
+```
+Use when the path through the workers depends on the input.
+
+### The key conceptual unlock
+
+> **Workers are exposed to the manager as tools.** Native tool calling, exactly like with `calculator` or `wikipedia_search`. The "tool function" just happens to internally run another LLM-based agent.
+
+Once you internalize this, manager/worker stops feeling like a different paradigm. It's recursive ReAct — a worker can have its own workers as tools, and so on. CrewAI, LangGraph's supervisor pattern, AutoGen's GroupChat — all use this primitive under different branding.
+
+### Module 5a — Pipeline pattern (Researcher + Writer)
+
+Task: *"Write a short biographical summary of Marie Curie covering her early life, scientific work, and historical significance."*
+
+Built `stage5_multiagent.py`:
+- Researcher: ReAct agent with Wikipedia tools, outputs structured `{topic, key_facts, sources}`
+- Writer: single LLM call, no tools, takes research output, produces prose
+- Orchestrator: hardcoded Python function (no LLM) that runs them in order
+
+**Comparison with single-agent baseline (`stage3_5_structured.py`):**
+- Multi-agent prose was visibly better-organized — three paragraphs matching the three requested aspects (early life, work, significance)
+- Single-agent prose was a flat info-dump; the agent was still in "tool-using mode" when it produced output
+- Multi-agent used ~60% more LLM calls
+
+**The lesson:** Separating cognitive modes (research vs. composition) produces better outputs for tasks that mix modes. The writer agent, freed from tool-use cognition, produces more natural prose.
+
+### Module 5b — Manager/Worker pattern (Trip Planner)
+
+Task: *"Plan a 5-day trip to Kyoto with budget $2000 and interests in history and food."*
+
+Built `stage5_manager_multi_agent.py` with three workers:
+- `destination_researcher` — practical info via Wikipedia
+- `activities_researcher` — things to do via Wikipedia
+- `budget_analyzer` — no tools, pure LLM reasoning about costs
+
+The manager exposes each worker as a tool. Decides routing dynamically.
+
+**Behavior observed on Kyoto run:**
+- Manager called `activities_researcher` and `budget_analyzer` *in parallel* in step 1
+- Correctly skipped `destination_researcher` (user didn't ask about practical info)
+- Synthesized outputs into a structured trip plan in step 2
+
+**Behavior observed on Reykjavik run (simpler task):**
+- Manager called only `destination_researcher` — correctly skipped activities and budget
+- However, the worker returned *more* than the user asked for, because the worker's prompt has its own goals independent of the manager's routing hint
+
+### Important failure mode: worker non-compliance with manager guidance
+
+In the Reykjavik test, the manager passed `travel_style="weather overview"` to indicate the user only wanted weather info. The worker's system prompt told it to gather climate AND transport AND currency AND language AND safety. Result: the worker returned everything, ignoring the manager's hint.
+
+**This is a real production problem.** Workers are independent agents with their own prompts. Manager guidance is a soft suggestion, not a hard constraint.
+
+Mitigations:
+1. **Make workers responsive to parameters:** worker prompts explicitly check filter parameters and narrow their behavior accordingly
+2. **More granular workers:** instead of one broad worker, have several narrow ones (`weather_researcher`, `transport_researcher`, etc.)
+3. **Post-processing in the manager:** filter worker output before synthesis based on what the user actually asked for
+
+All three have tradeoffs. There's no universal best answer — this is a real design decision.
+
+### Cost reality
+
+Cost grew significantly:
+- Single agent: ~3-5 LLM calls per task
+- Pipeline: ~5-7 calls per task
+- Manager/worker: ~8-12 calls per task (each worker is itself a small ReAct loop)
+
+For one-off tasks this is negligible. For high-volume production, it's a real budget consideration. The quality improvement must justify the cost.
+
+### Cheatsheet: when to use which pattern
+
+| Situation | Recommended pattern |
+|-----------|---------------------|
+| Task has one cognitive mode | Single agent |
+| Task has clear, fixed phases | Pipeline |
+| Task requires dynamic routing among specialists | Manager/Worker |
+| Workers need different tools, models, or rate limits | Multi-agent (either) |
+| Output quality matters more than cost | Multi-agent |
+| High-volume, latency-sensitive | Single agent |
+
+### The industry trend
+
+Multi-agent systems were heavily hyped 2023-2024. The trend has been moving back toward **one well-designed agent with many tools**, for these reasons:
+
+- Frontier models (GPT-5, Claude Sonnet 4.5, Gemini 2.5 Pro) are good enough to handle complex tasks alone
+- Coordination loses information at every handoff
+- Multi-agent systems are harder to debug, monitor, maintain
+- The added cost rarely justifies marginal quality gains for most use cases
+
+**The honest current recommendation:** start with one well-designed agent. Add specialization only when you can clearly articulate (a) what cognitive mode separation it provides, (b) why a single agent can't do the same with the right prompt, and (c) what the handoff schema between agents looks like.
+
+If you can't articulate all three with substance, you don't need multi-agent.
+
+### Surprising things observed
+
+- **Single agents in "tool-using mode" produce list-like prose.** The agent's recent context dominates its style. After several tool calls, its natural output is dry and factual, not flowing.
+- **The writer agent, with no tools and only structured input, produces visibly better prose.** Cognitive mode separation is real and visible.
+- **Manager routing intelligence is genuine.** Skipping `budget_analyzer` when no budget is mentioned, calling workers in parallel when independent — these aren't programmed behaviors, they emerge from the LLM's reasoning over the task and available workers.
+- **Workers don't always honor manager guidance.** Manager passes hints; worker prompts may override them. Coordinating multiple LLM-based agents is harder than coordinating multiple functions.
+- **The handoff schema is everything.** When the researcher categorized facts by `early_life`/`scientific_work`/`significance`, the writer could organize three paragraphs. Without that categorization, the writer would have to infer structure from raw facts.
+
+---
+
+## Code Artifacts (additions)
+
+| File | Purpose |
+|------|---------|
+| `stage5_multiagent.py` | Pipeline pattern: researcher + writer |
+| `stage5_manager_multi_agent.py` | Manager/worker pattern: trip planner with 3 specialized workers |
+
+---
+
 ## Status
 
 - ✅ Module 1: Foundations
 - ✅ Module 2: Building a ReAct Agent
 - ✅ Module 3: Expanding the Action Space
-- ✅ Module 4: Memory, planning, reflection (4.4–4.6 covered as theory)
-- ⏳ Module 5: Multi-agent systems
-- ⏳ Module 6: Frameworks
+- ✅ Module 4: Memory, planning, reflection
+- ✅ Module 5: Multi-agent systems (pipeline + manager/worker patterns)
+- ⏳ Module 6: Frameworks (LangGraph, CrewAI)
