@@ -1,0 +1,20 @@
+cheap models
+
+Summary 
+What goes in the summary? This is the most important design choice. A bad summary loses critical information; a good one captures it concisely. The summary should preserve:
+
+The user's original goal
+Key facts the agent has established
+What tools it has tried and what worked/didn't
+Any decisions made or constraints discovered
+
+Compression
+The flow in one paragraph
+
+Before every LLM call, we count tokens. If under 8000, do nothing. If over 8000, find the cutoff between "old turns to compress" and "recent turns to keep" — the cutoff is always on an assistant-message boundary so tool_call_ids stay linked. Slice the messages list into three pieces: (1) keep the system prompt and original user goal, (2) replace the older middle chunk with a single LLM-generated summary, (3) keep the last 4 turn groups intact. Concatenate. Use this compressed list for the next LLM call.
+
+how embeddings are calculated - 
+Embeddings, explained without math
+An embedding is a way of turning a piece of text into a list of numbers — typically a few hundred or a few thousand numbers — such that texts with similar meanings produce similar lists of numbers
+
+This is genuinely strange and magical when you first encounter it. How do you turn the meaning of "Caligula" into a list of numbers? You don't write rules. You train a neural network on huge amounts of text — like an LLM, but with a different objective. The network learns to produce lists of numbers such that semantically-similar things end up with similar lists. It works because language has structure that can be captured in geometric relationships between vectors.
