@@ -2,6 +2,40 @@
 ### Each Module is built for specific use case and has examples as mentioned.
 ### This contains simplest agents with access to only one tool (Calculator) upto complex multi tool agent access
 
+## If you want to learn this in a UI
+
+```bash
+pip install streamlit
+```
+
+## How to run
+
+1. Place `app.py` in the **same directory** as your code files (`stage1_fake_agent.py`, `stage2_real_agent.py`, etc.).
+2. From that directory, run:
+
+```bash
+streamlit run app.py
+```
+
+3. Streamlit will open a browser tab at `http://localhost:8501`.
+
+## What you get
+
+- **🏠 Home** — overview, metrics, course arc
+- **📘 How to read this** — different paths through the material
+- **1️⃣–6️⃣ Module pages** — concepts, observations, lessons for each module
+- **📂 Code Artifacts** — full list of files; if the file is in the current directory, you can view it inline and download it
+- **💡 Key Lessons** — the five takeaways + surprising observations grouped by module
+- **📋 Cheatsheets & References** — ReAct family, failure modes, tool design, compression, multi-agent decision matrix
+- **🎓 Final Reflection** — what the course did and deliberately didn't cover
+
+## Notes
+
+- Files marked "**Found**" are present in the working directory. Files marked "*not in dir*" simply mean you haven't placed them next to `app.py` — the rest of the UI still works.
+- The sidebar has a permanent **Status** panel showing all modules complete.
+- Each module page that has associated code files renders an expandable inline viewer for them.
+
+
 ## How to read this README
 
 This README is organized chronologically — Module 1 is foundational concepts; later modules build on earlier ones. If you're new here:
@@ -24,6 +58,7 @@ A self-paced course on Agentic AI, built from scratch in plain Python (no framew
 
 ### How to use this README
 - [How to read this README](#how-to-read-this-readme)
+- [Learning in the UI](#If-you-want-to-learn-this-in-a-UI)
 
 ### The Course
 - [Module 1: Foundations](#module-1-foundations)
