@@ -21,13 +21,13 @@ streamlit run app.py
 
 ## What you get
 
-- **🏠 Home** — overview, metrics, course arc
-- **📘 How to read this** — different paths through the material
-- **1️⃣–6️⃣ Module pages** — concepts, observations, lessons for each module
-- **📂 Code Artifacts** — full list of files; if the file is in the current directory, you can view it inline and download it
-- **💡 Key Lessons** — the five takeaways + surprising observations grouped by module
-- **📋 Cheatsheets & References** — ReAct family, failure modes, tool design, compression, multi-agent decision matrix
-- **🎓 Final Reflection** — what the course did and deliberately didn't cover
+- **Home** — overview, metrics, course arc
+- **How to read this** — different paths through the material
+- **Module pages** — concepts, observations, lessons for each module
+- **Code Artifacts** — full list of files; if the file is in the current directory, you can view it inline and download it
+- **Key Lessons** — the five takeaways + surprising observations grouped by module
+- **Cheatsheets & References** — ReAct family, failure modes, tool design, compression, multi-agent decision matrix
+- **Final Reflection** — what the course did and deliberately didn't cover
 
 ## Notes
 
