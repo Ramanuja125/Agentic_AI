@@ -4,6 +4,15 @@
 
 ## If you want to learn this in a UI
 
+1. Clone the entire repository
+2. Create a .env file with the LLM API key -
+   An Example value if the key is generated on Openrouter -
+
+```bash
+OPENROUTER_API_KEY=sk-or-v1-8008a.......
+```
+This might vary based on your requirement.
+3. Install UI library - 
 ```bash
 pip install streamlit
 ```
@@ -1144,6 +1153,13 @@ Things this course deliberately did NOT cover:
 - **Building agents that interact with real APIs** (Stripe, Salesforce, Gmail) — same patterns, different surface area
 
 For each of these, the patterns in this course transfer. The mental model is what matters.
+
+Note -
+This course runs various calls to the various Range of Models offered by Open Router and to make these API calls, we will have to get some credits loaded.
+Overall, if we stick to the cheaper models, the entire cost will be less than 1$.
+
+Stick to the cheap-model tier for development. When experimenting, use google/gemini-2.5-flash, anthropic/claude-haiku-4.5, or openai/gpt-4o-mini. They're all in the ~$0.001/run range for our small tasks. Save the premium models (anthropic/claude-sonnet-4.5, openai/gpt-5, etc.) for one or two deliberate comparison runs when you want to see how a stronger model handles a hard problem. Don't develop on them.
+
 
 
 ## Status
